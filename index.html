@@ -343,6 +343,7 @@ class Component extends DCLogic {
   }
 
   componentWillUnmount() {
+    this.finishMediaStops();
     window.removeEventListener("mousemove", this.onMouseMoveHero);
     if (this._heroRaf) cancelAnimationFrame(this._heroRaf);
     window.removeEventListener("resize", this.onResize);
@@ -351,9 +352,37 @@ class Component extends DCLogic {
     Object.values(this.intervals).forEach((id) => clearInterval(id));
   }
 
+  mediaStops = new Map();
+  finishMediaStops = () => {
+    for (const finish of [...this.mediaStops.values()]) finish();
+  };
+  fadeOutMedia = () => {
+    this.finishMediaStops();
+    document.querySelectorAll('video[id^="media-"]').forEach((v) => {
+      const volume = v.volume;
+      let frame = null;
+      const finish = () => {
+        if (frame !== null) cancelAnimationFrame(frame);
+        v.pause();
+        v.currentTime = 0;
+        v.volume = volume;
+        this.mediaStops.delete(v);
+      };
+      if (v.paused) { finish(); return; }
+      this.mediaStops.set(v, finish);
+      const start = performance.now();
+      const fade = (now) => {
+        const progress = Math.min(1, (now - start) / 650);
+        v.volume = volume * (1 - progress);
+        if (progress < 1) frame = requestAnimationFrame(fade);
+        else finish();
+      };
+      frame = requestAnimationFrame(fade);
+    });
+  };
   toggleNav = (id) => {
     const cur = this.state.open;
-    if (cur === id) { this.scrollToY(0, 1100); return this.setState({ open: null }); }
+    if (cur === id) { this.fadeOutMedia(); this.scrollToY(0, 1100); return this.setState({ open: null }); }
     if (!cur) {
       this.lastOpen = id;
       this.setState({ preOpen: id });
@@ -567,6 +596,7 @@ class Component extends DCLogic {
   }
   onResize = () => { this.measureHero(); this.forceUpdate(); };
   playMedia = (id) => {
+    this.finishMediaStops();
     this.flagCardAnim();
     const v = document.getElementById("media-" + id);
     if (!v) return;
